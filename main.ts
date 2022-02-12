@@ -62,6 +62,10 @@ class Chord {
 	}
 	return "FULL";
     }
+
+    public chordToString(): string {
+	return this.sequence.map(hk => hk.toString()).join(" ");
+    }
 }
 
 interface Settings {
@@ -87,7 +91,13 @@ export default class HotkeysChordPlugin extends Plugin {
     private currentseq: HotKey[]; // List of currently pressed chords
 
     async onload() {
-	this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+	// Convert each data to Chord and to HotKey
+	let data = await this.loadData();
+	data.hotkeys = data.hotkeys.map(chord => new Chord({
+	    command: chord.command,
+	    sequence: chord.sequence.map(hotkey => new HotKey(hotkey)),
+	}));
+	this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
 	this.statusbar = this.addStatusBarItem();
 	this.currentseq = [];
 
@@ -99,10 +109,7 @@ export default class HotkeysChordPlugin extends Plugin {
 		})
 	    )
 	);
-
-	// TODO: Add the settings tab!
-	// this.addSettingsTab is not a function!!
-	// this.addSettingsTab(new HotkeysChordPluginSettingsTab(this.app, this));
+	this.addSettingTab(new HotkeysChordPluginSettingsTab(this.app, this));
     }
 
     async saveSettings() {
@@ -142,8 +149,7 @@ export default class HotkeysChordPlugin extends Plugin {
 		(this.app as any).commands.executeCommandById(chord.command);
 		event.preventDefault();
 		event.stopPropagation();
-		// TODO: Maybe put this as an option
-		new Notice(`Chord triggered ${chord.command}`);
+		// new Notice(`Chord triggered ${chord.command}`);
 		partialMatch = false;
 		break;
 	    } else if (result == "YES") {
@@ -164,29 +170,176 @@ export default class HotkeysChordPlugin extends Plugin {
 }
 
 class HotkeysChordPluginSettingsTab extends PluginSettingTab {
-    plugin: HotkeysChordPlugin;
+    private readonly plugin: HotkeysChordPlugin;
 
     constructor(app: App, plugin: HotkeysChordPlugin) {
 	super(app, plugin);
 	this.plugin = plugin;
     }
-    
+
+    // Returns { name, id } for each of the application commands
+    private readonly generateCommandList = (app: App): Command[] => {
+	const commands: Command[] = [];
+	for (const [key, value] of Object.entries((app as any).commands.commands)) {
+	    commands.push({ name: value.name, id: value.id });
+	}
+	return commands;
+    };
+
     public display(): void {
+	const commands = this.generateCommandList(this.app);
 	const {containerEl} = this;
 	containerEl.empty();
-	containerEl.createEl('h2', {text: 'Hotkeys Chord Plugin - Settings'});
+	containerEl.createEl('h2', { text: 'Hotkeys Chord Plugin - Settings' });
+	containerEl.createEl('p', { text: "Click on the buttons to change chords. Click again to end chord composition." });
+	containerEl.createEl('h3', { text: 'Existing Hotkeys Chords' });
+	// We do want to create a thing for each chord...
+	this.plugin.settings.hotkeys.forEach((chord, index) => {
+	    new ChordSetting(containerEl, "existing", chord, commands, async state => {
+		if (state === undefined) {
+		    this.plugin.settings.hotkeys.splice(index, 1); // Remove the element at index
+		    await this.plugin.saveSettings();
+		} else {
+		    this.plugin.settings.hotkeys[index] = state;
+		    await this.plugin.saveSettings();
+		}
+		this.display();
+	    });
+	});
+	containerEl.createEl('h3', { text: 'Create new Chord' });
+	// Important that it is a variable that is persisted across
+	var newchord;
+	if (newchord == undefined)
+	    newchord = new Chord({ sequence: [], command: "invalid-placeholder" });
+	new ChordSetting(containerEl, "new", newchord, commands, async state => {
+	    this.plugin.settings.hotkeys.push(state);
+	    await this.plugin.saveSettings();
+	    newchord = new Chord({ sequence: [], command: "invalid-placeholder" });
+	    this.display();
+	});
+    }
+}
 
-	// TODO: Show currently defined hotkeys and allow to add others!
-	new Setting(containerEl)
-	    .setName('Setting #1')
-	    .setDesc('It\'s a secret')
-	    .addText(text => text
-	    .setPlaceholder('Enter your secret')
-	    .setValue(this.plugin.settings.mySetting)
-	    .onChange(async (value) => {
-		console.log('Secret: ' + value);
-		this.plugin.settings.mySetting = value;
-		await this.plugin.saveSettings();
-	    }));
+class ChordSetting extends Setting {
+    private ctype;
+    private chord;
+    private commands;
+    private cb;
+    
+    constructor (container, ctype, chord: Chord, commands, cb) {
+	super(container);
+	this.ctype = ctype;
+	this.chord = chord;
+	this.cb = cb;
+	this.commands = commands;
+	this.display();
+    }
+
+    public display(): void {
+	// Do a search on the given command
+	let cmdname = `${this.chord.command}`;
+	for (let command of this.commands) {
+	    if (command.id == this.chord.command)
+		cmdname = command.name;
+	}
+	this.clear()
+	    .addButton(btn => {
+		var state = "inactive";
+		var stopper = undefined;
+		var text = "";
+		if (this.chord.sequence.length > 0) {
+		    text = this.chord.chordToString();
+		} else {
+		    text = "Choose a Chord";
+		}
+		btn.setButtonText(text)
+		    .setTooltip("Change the Chord")
+		    .onClick(() => {
+			if (state === "inactive") {
+			    state = "active";
+			    btn.setButtonText("Type the Chord");
+			    stopper = new ChordCapture((sequence, final) => {
+				if (final) {
+				    this.chord.sequence = sequence;
+				    if (this.ctype == "existing")
+					this.cb(this.chord);
+				    else
+					this.display();
+				} else {
+				    btn.setButtonText("*** " + sequence.map(hk => hk.toString()).join(" ") + " ***");
+				}
+			    });
+			} else {
+			    stopper();
+			    state = "inactive";
+			}
+		    });
+	    })
+	    .addDropdown(dropdown => {
+		dropdown.addOption("invalid-placeholder", "Select a Command");
+		this.commands.forEach(cmd => dropdown.addOption(cmd.id, cmd.name));
+		dropdown.onChange(newcmd => {
+		    this.chord.command = newcmd;
+		    if (this.ctype == "existing")
+			this.cb(this.chord);
+		    else
+			this.display();
+		});
+		dropdown.setValue(this.chord.command);
+	    })
+	    .addExtraButton(btn => {
+		if (this.ctype == "existing") {
+		    btn.setIcon("cross")
+			.setTooltip("Delete shortcut")
+			.onClick(() => {
+			    this.cb(undefined);
+			});
+		} else {
+		    btn.setIcon("enter")
+			.setTooltip("Add shortcut")
+			.onClick(() => {
+			    if ((this.chord.command === "invalid-placeholder") ||
+				(this.chord.sequence.length == 0)) {
+				new Notice("Please choose both a command and a chord!!!");
+			    } else {
+				this.cb(this.chord);
+			    }
+			});
+		}
+	    });
+    }
+}
+
+class ChordCapture {
+    constructor (cb) {
+	var sequence = [];
+	var keydownhandler = event => {
+	    if (["Shift", "Meta", "Alt", "Control"].contains(event.key))
+		return;
+	    // We always want to remove further things for such events
+	    event.preventDefault();
+	    event.stopPropagation();
+	    if (event.key === "Escape") {
+		document.removeEventListener("keydown", keydownhandler);
+		cb(sequence, true);
+	    } else {
+		let hotkey = new HotKey({
+		    key: event.key,
+		    meta: event.metaKey,
+		    ctrl: event.ctrlKey,
+		    alt: event.altKey,
+		    shift: event.shiftKey,
+		});
+		sequence.push(hotkey);
+		cb(sequence, false);
+	    };
+	};
+	// Stop when this method is called
+	var stopper = () => {
+	    cb(sequence, true);
+	    document.removeEventListener("keydown", keydownhandler);
+	};
+	document.addEventListener("keydown", keydownhandler);
+	return stopper;
     }
 }

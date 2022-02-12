@@ -3,7 +3,7 @@
 	"name": "Hotkeys Chords",
 	"version": "0.0.0",
 	"minAppVersion": "0.13.0",
-	"description": "Set Emacs-style hotkeys chords for commands",
+	"description": "Set hotkeys chords for commands",
 	"author": "Dario Balboni",
 	"authorUrl": "https://obsidian.md",
 	"isDesktopOnly": false
