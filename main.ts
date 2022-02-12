@@ -75,12 +75,13 @@ interface Settings {
 const DEFAULT_SETTINGS: Settings = {
     hotkeys: [
 	new Chord({ sequence: [
-	    new HotKey({ key: 'h', meta: false, shift: false, ctrl: false, alt: true }),
-	], command: "editor:focus-left" }),
+	    new HotKey({ key: 'x', meta: false, shift: false, ctrl: true, alt: false }),
+	    new HotKey({ key: '3', meta: false, shift: false, ctrl: false, alt: false }),
+	], command: "workspace:split-vertical" }),
 	new Chord({ sequence: [
 	    new HotKey({ key: 'x', meta: false, shift: false, ctrl: true, alt: false }),
-	    new HotKey({ key: 'h', meta: false, shift: false, ctrl: false, alt: false }),
-	], command: "command-palette:open" }),
+	    new HotKey({ key: '2', meta: false, shift: false, ctrl: false, alt: false }),
+	], command: "workspace:split-horizontal" }),
     ]
 }
 
