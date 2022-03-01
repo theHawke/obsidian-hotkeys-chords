@@ -103,16 +103,14 @@ export default class HotkeysChordPlugin extends Plugin {
 	this.currentseq = [];
 
 	this.updateStatusBar();
-	this.registerEditorExtension(
-	    Prec.highest(
-		EditorView.domEventHandlers({
-		    "keydown": this.handleKeyDown,
-		})
-	    )
-	);
+	window.addEventListener("keydown", this.handleKeyDown, {capture: true});
 	this.addSettingTab(new HotkeysChordPluginSettingsTab(this.app, this));
     }
 
+    async onunload() {
+	window.removeEventListener("keydown", this.handleKeyDown);
+    }
+    
     async saveSettings() {
 	await this.saveData(this.settings);
     }
@@ -311,36 +309,34 @@ class ChordSetting extends Setting {
     }
 }
 
-class ChordCapture {
-    constructor (cb) {
-	var sequence = [];
-	var keydownhandler = event => {
-	    if (["Shift", "Meta", "Alt", "Control"].contains(event.key))
-		return;
-	    // We always want to remove further things for such events
-	    event.preventDefault();
-	    event.stopPropagation();
-	    if (event.key === "Escape") {
-		document.removeEventListener("keydown", keydownhandler);
-		cb(sequence, true);
-	    } else {
-		let hotkey = new HotKey({
-		    key: event.key,
-		    meta: event.metaKey,
-		    ctrl: event.ctrlKey,
-		    alt: event.altKey,
-		    shift: event.shiftKey,
-		});
-		sequence.push(hotkey);
-		cb(sequence, false);
-	    };
-	};
-	// Stop when this method is called
-	var stopper = () => {
-	    cb(sequence, true);
+function ChordCapture (cb) {
+    var sequence = [];
+    var keydownhandler = event => {
+	if (["Shift", "Meta", "Alt", "Control"].contains(event.key))
+	    return;
+	// We always want to remove further things for such events
+	event.preventDefault();
+	event.stopPropagation();
+	if (event.key === "Escape") {
 	    document.removeEventListener("keydown", keydownhandler);
+	    cb(sequence, true);
+	} else {
+	    let hotkey = new HotKey({
+		key: event.key,
+		meta: event.metaKey,
+		ctrl: event.ctrlKey,
+		alt: event.altKey,
+		shift: event.shiftKey,
+	    });
+	    sequence.push(hotkey);
+	    cb(sequence, false);
 	};
-	document.addEventListener("keydown", keydownhandler);
-	return stopper;
-    }
+    };
+    // Stop when this method is called
+    var stopper = () => {
+	document.removeEventListener("keydown", keydownhandler);
+	cb(sequence, true);
+    };
+    document.addEventListener("keydown", keydownhandler);
+    return stopper;
 }
