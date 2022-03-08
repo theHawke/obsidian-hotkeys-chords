@@ -91,7 +91,7 @@ export default class HotkeysChordPlugin extends Plugin {
 
     async onload() {
 	// Convert each data to Chord and to HotKey
-	let data = await this.loadData();
+	var data = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 	data.hotkeys = data.hotkeys.map(chord => new Chord({
 	    command: chord.command,
 	    sequence: chord.sequence.map(hotkey => new HotKey(hotkey)),
