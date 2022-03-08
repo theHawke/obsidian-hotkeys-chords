@@ -1,6 +1,4 @@
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
-import { Prec } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
 
 class HotKey {
     public meta: boolean;
@@ -103,8 +101,8 @@ export default class HotkeysChordPlugin extends Plugin {
 	this.currentseq = [];
 
 	this.updateStatusBar();
-	window.addEventListener("keydown", this.handleKeyDown, {capture: true});
 	this.addSettingTab(new HotkeysChordPluginSettingsTab(this.app, this));
+	window.addEventListener("keydown", this.handleKeyDown, {capture: true});
     }
 
     async onunload() {
