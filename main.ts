@@ -93,6 +93,8 @@ export default class HotkeysChordPlugin extends Plugin {
 	private statusbar: HTMLElement; // Points to our custom status bar
 	private currentseq: HotKey[]; // List of currently pressed chords
 
+	private captureDisabled: boolean; // to disable processing of key chords while capturing new ones
+
 	async onload() {
 		// Convert each data to Chord and to HotKey
 		var data = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -103,6 +105,7 @@ export default class HotkeysChordPlugin extends Plugin {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
 		this.statusbar = this.addStatusBarItem();
 		this.currentseq = [];
+		this.captureDisabled = false;
 
 		this.updateStatusBar();
 		this.addSettingTab(new HotkeysChordPluginSettingsTab(this.app, this));
@@ -117,6 +120,14 @@ export default class HotkeysChordPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
+	disableCapture() {
+		this.captureDisabled = true;
+	}
+
+	reEnableCapture() {
+		this.captureDisabled = false;
+	}
+
 	private updateStatusBar(): void {
 		var chord = "None";
 		if (this.currentseq.length > 0) {
@@ -128,6 +139,9 @@ export default class HotkeysChordPlugin extends Plugin {
 	private readonly handleKeyDown = (
 		event: KeyboardEvent
 	) => {
+		if (this.captureDisabled) {
+			return;
+		}
 		if (event.key === 'Shift' || event.key === 'Meta' || event.key === 'Control' || event.key == 'Alt') {
 			console.debug("Skipping meta key: " + event.key);
 			return;
@@ -195,7 +209,7 @@ class HotkeysChordPluginSettingsTab extends PluginSettingTab {
 		containerEl.createEl('h3', { text: 'Existing Hotkeys Chords' });
 		// We do want to create a thing for each chord...
 		this.plugin.settings.hotkeys.forEach((chord, index) => {
-			new ChordSetting(containerEl, "existing", chord, commands, async state => {
+			new ChordSetting(containerEl, this.plugin, "existing", chord, commands, async state => {
 				if (state === undefined) {
 					this.plugin.settings.hotkeys.splice(index, 1); // Remove the element at index
 					await this.plugin.saveSettings();
@@ -211,7 +225,7 @@ class HotkeysChordPluginSettingsTab extends PluginSettingTab {
 		var newchord;
 		if (newchord == undefined)
 			newchord = new Chord({ sequence: [], command: "invalid-placeholder" });
-		new ChordSetting(containerEl, "new", newchord, commands, async state => {
+		new ChordSetting(containerEl, this.plugin, "new", newchord, commands, async state => {
 			this.plugin.settings.hotkeys.push(state);
 			await this.plugin.saveSettings();
 			newchord = new Chord({ sequence: [], command: "invalid-placeholder" });
@@ -221,13 +235,15 @@ class HotkeysChordPluginSettingsTab extends PluginSettingTab {
 }
 
 class ChordSetting extends Setting {
+	private plugin;
 	private ctype;
 	private chord;
 	private commands;
 	private cb;
 
-	constructor(container: HTMLElement, ctype: string, chord: Chord, commands: Command[], cb: (chord: Chord) => void) {
+	constructor(container: HTMLElement, plugin: HotkeysChordPlugin, ctype: string, chord: Chord, commands: Command[], cb: (chord: Chord) => void) {
 		super(container);
+		this.plugin = plugin;
 		this.ctype = ctype;
 		this.chord = chord;
 		this.cb = cb;
@@ -258,9 +274,11 @@ class ChordSetting extends Setting {
 						if (state === "inactive") {
 							state = "active";
 							btn.setButtonText("Type the Chord");
+							this.plugin.disableCapture();
 							stopper = ChordCapture((sequence, final) => {
 								if (final) {
 									this.chord.sequence = sequence;
+									this.plugin.reEnableCapture();
 									if (this.ctype == "existing")
 										this.cb(this.chord);
 									else
